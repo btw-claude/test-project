@@ -83,7 +83,11 @@ class TestGetClient:
 
     def test_raises_runtime_error_when_not_initialized(self) -> None:
         """Test that get_client raises RuntimeError when not initialized."""
-        # Reset the context variable by creating a new context
+        # Using copy_context() creates an isolated context where our ContextVar
+        # starts fresh with its default value (None). This is necessary because
+        # contextvars persist their values within the same async task/test run,
+        # and previous tests may have set the client. Running in a copied context
+        # ensures we test the uninitialized state without affecting other tests.
         from contextvars import copy_context
 
         ctx = copy_context()
@@ -214,3 +218,117 @@ class TestTypeDefinitions:
         """Test SDKMCPConfig has expected keys."""
         expected_keys = {"tools", "tool_configs", "tool_names", "description", "version"}
         assert set(SDKMCPConfig.__annotations__.keys()) == expected_keys
+
+
+class TestContextVarsAsyncIsolation:
+    """Tests for contextvars isolation in async contexts.
+
+    These tests validate that the ContextVar-based client storage provides
+    proper isolation across concurrent async operations, which is the primary
+    motivation for using contextvars over module-level globals.
+    """
+
+    @pytest.mark.asyncio
+    async def test_context_isolation_across_concurrent_tasks(
+        self, mock_auth_provider: MagicMock
+    ) -> None:
+        """Test that concurrent async tasks maintain separate client instances.
+
+        Verifies that when multiple async tasks initialize different clients,
+        each task sees only its own client, not clients from other tasks.
+        """
+        import asyncio
+
+        client1 = SlackClient(mock_auth_provider)
+        client2 = SlackClient(mock_auth_provider)
+        results: dict[str, SlackClient] = {}
+
+        async def task_with_client(name: str, client: SlackClient) -> None:
+            initialize_tools(client)
+            # Yield control to allow other tasks to run
+            await asyncio.sleep(0.01)
+            # Verify we still get our own client back
+            results[name] = get_client()
+
+        await asyncio.gather(
+            task_with_client("task1", client1),
+            task_with_client("task2", client2),
+        )
+
+        # Each task should have stored its own client
+        assert results["task1"] is client1
+        assert results["task2"] is client2
+
+    @pytest.mark.asyncio
+    async def test_sequential_async_tasks_share_context(
+        self, mock_auth_provider: MagicMock
+    ) -> None:
+        """Test that sequential async operations in the same task share context.
+
+        Verifies that within a single async task, the client persists across
+        multiple await points as expected.
+        """
+        client = SlackClient(mock_auth_provider)
+        initialize_tools(client)
+
+        import asyncio
+
+        await asyncio.sleep(0.01)
+        retrieved1 = get_client()
+        await asyncio.sleep(0.01)
+        retrieved2 = get_client()
+
+        assert retrieved1 is client
+        assert retrieved2 is client
+
+    @pytest.mark.asyncio
+    async def test_nested_async_calls_preserve_context(
+        self, mock_auth_provider: MagicMock
+    ) -> None:
+        """Test that nested async function calls preserve the context.
+
+        Verifies that the client is accessible through nested async call chains.
+        """
+        client = SlackClient(mock_auth_provider)
+        initialize_tools(client)
+
+        async def inner_function() -> SlackClient:
+            return get_client()
+
+        async def outer_function() -> SlackClient:
+            return await inner_function()
+
+        result = await outer_function()
+        assert result is client
+
+    @pytest.mark.asyncio
+    async def test_context_not_shared_between_copied_contexts(
+        self, mock_auth_provider: MagicMock
+    ) -> None:
+        """Test that copied contexts are truly isolated.
+
+        Verifies that using copy_context() creates a fresh context where
+        the ContextVar has its default value, not values from the parent.
+        """
+        from contextvars import copy_context
+
+        client = SlackClient(mock_auth_provider)
+        initialize_tools(client)
+
+        # Verify client is set in current context
+        assert get_client() is client
+
+        # Create a new context and verify it starts fresh
+        new_ctx = copy_context()
+
+        def check_in_new_context() -> None:
+            from app.mcp_server import _slack_client_var
+
+            _slack_client_var.set(None)
+            with pytest.raises(RuntimeError, match="SlackClient not initialized"):
+                get_client()
+
+        new_ctx.run(check_in_new_context)
+
+        # Original context should still have the client
+        assert get_client() is client

@@ -24,6 +24,9 @@ class MockAuthProvider(AuthProvider):
     def get_token(self) -> str:
         return self._token
 
+    async def validate_with_api(self, timeout: float = 10.0) -> dict:
+        return {"ok": True, "user": "test_user"}
+
 
 @pytest.fixture
 def required_env_vars() -> dict[str, str]:
