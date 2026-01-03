@@ -236,28 +236,62 @@ class TestContextVarsAsyncIsolation:
 
         Verifies that when multiple async tasks initialize different clients,
         each task sees only its own client, not clients from other tasks.
+
+        Uses contextvars.copy_context().run() with asyncio.create_task() to ensure
+        each task operates in a truly isolated context, providing stronger guarantees
+        about context isolation behavior in production scenarios where tasks may be
+        spawned from different contexts.
         """
         import asyncio
+        from contextvars import Context, copy_context
+
+        from app.mcp_server import _slack_client_var
 
         client1 = SlackClient(mock_auth_provider)
         client2 = SlackClient(mock_auth_provider)
         results: dict[str, SlackClient] = {}
 
-        async def task_with_client(name: str, client: SlackClient) -> None:
-            initialize_tools(client)
-            # Yield control to allow other tasks to run
+        async def run_in_context(
+            ctx: Context, name: str, client: SlackClient
+        ) -> None:
+            """Run the async task logic within an isolated copied context.
+
+            Each synchronous operation (initialize_tools, get_client) is executed
+            within the copied context using ctx.run(), ensuring that the ContextVar
+            modifications are isolated to that specific context.
+            """
+            # Initialize the client within the isolated context
+            ctx.run(initialize_tools, client)
+
+            # Yield control to allow other tasks to run concurrently
             await asyncio.sleep(0.01)
-            # Verify we still get our own client back
-            results[name] = get_client()
 
-        await asyncio.gather(
-            task_with_client("task1", client1),
-            task_with_client("task2", client2),
-        )
+            # Retrieve the client from the isolated context
+            def get_result() -> SlackClient:
+                return get_client()
 
-        # Each task should have stored its own client
+            results[name] = ctx.run(get_result)
+
+        # Create isolated contexts for each task
+        # copy_context() creates a shallow copy of the current context,
+        # ensuring each task has its own independent context state
+        ctx1 = copy_context()
+        ctx2 = copy_context()
+
+        # Create and run tasks with their isolated contexts
+        task1 = asyncio.create_task(run_in_context(ctx1, "task1", client1))
+        task2 = asyncio.create_task(run_in_context(ctx2, "task2", client2))
+
+        await asyncio.gather(task1, task2)
+
+        # Each task should have stored its own client in its isolated context
         assert results["task1"] is client1
         assert results["task2"] is client2
+
+        # Verify the original/current context was not modified by either task
+        # This confirms that the isolated contexts didn't leak into the parent
+        current_client = _slack_client_var.get()
+        assert current_client is None or current_client not in (client1, client2)
 
     @pytest.mark.asyncio
     async def test_sequential_async_tasks_share_context(
