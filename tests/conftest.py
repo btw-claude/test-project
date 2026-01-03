@@ -1,7 +1,6 @@
 """Pytest fixtures for slack-agent tests."""
 
-from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -99,10 +98,3 @@ def mock_settings() -> MagicMock:
     settings.api_host = "0.0.0.0"
     settings.api_port = 8000
     return settings
-
-
-@pytest.fixture
-def patch_get_settings(mock_settings: MagicMock) -> Any:
-    """Patch get_settings to return mock settings."""
-    with patch("app.tools.messages.get_settings", return_value=mock_settings) as patched:
-        yield patched
