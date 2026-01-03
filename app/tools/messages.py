@@ -20,6 +20,15 @@ def get_slack_client() -> SlackClient:
     return SlackClient(auth_provider)
 
 
+def reset_slack_client() -> None:
+    """Reset the cached SlackClient instance.
+
+    Call this function when the Slack configuration changes
+    and a fresh client instance is needed.
+    """
+    get_slack_client.cache_clear()
+
+
 async def send_user_message(user_id: str, text: str) -> dict[str, Any]:
     """Send a direct message to a Slack user.
 

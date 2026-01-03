@@ -6,6 +6,7 @@ import pytest
 
 from app.tools.messages import (
     get_slack_client,
+    reset_slack_client,
     send_channel_message,
     send_user_message,
 )
@@ -24,8 +25,8 @@ class TestGetSlackClient:
             patch("app.tools.messages.BearerTokenAuth") as mock_auth_class,
             patch("app.tools.messages.SlackClient") as mock_client_class,
         ):
-            # Clear the lru_cache before testing
-            get_slack_client.cache_clear()
+            # Clear the cache before testing
+            reset_slack_client()
 
             get_slack_client()
 
@@ -41,8 +42,8 @@ class TestGetSlackClient:
             patch("app.tools.messages.get_settings", return_value=mock_settings),
             patch("app.tools.messages.SlackClient") as mock_client_class,
         ):
-            # Clear the lru_cache before testing
-            get_slack_client.cache_clear()
+            # Clear the cache before testing
+            reset_slack_client()
 
             client1 = get_slack_client()
             client2 = get_slack_client()
@@ -50,6 +51,44 @@ class TestGetSlackClient:
             # SlackClient should only be instantiated once
             assert mock_client_class.call_count == 1
             assert client1 is client2
+
+
+class TestResetSlackClient:
+    """Tests for reset_slack_client function."""
+
+    def test_reset_slack_client_clears_cache(
+        self,
+        mock_settings: MagicMock,
+    ) -> None:
+        """Test that reset_slack_client clears the cached instance."""
+        mock_client_1 = MagicMock()
+        mock_client_2 = MagicMock()
+
+        with (
+            patch("app.tools.messages.get_settings", return_value=mock_settings),
+            patch(
+                "app.tools.messages.SlackClient",
+                side_effect=[mock_client_1, mock_client_2],
+            ) as mock_client_class,
+        ):
+            # Clear the cache before testing
+            reset_slack_client()
+
+            # Get a client instance
+            client1 = get_slack_client()
+
+            # Reset the cache
+            reset_slack_client()
+
+            # Get another client instance - should be a new one
+            client2 = get_slack_client()
+
+            # SlackClient should be instantiated twice
+            assert mock_client_class.call_count == 2
+            # The instances should be different objects
+            assert client1 is mock_client_1
+            assert client2 is mock_client_2
+            assert client1 is not client2
 
 
 class TestSendUserMessage:
