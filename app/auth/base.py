@@ -11,8 +11,6 @@ class AuthenticationError(Exception):
     during API validation.
     """
 
-    pass
-
 
 class AuthProvider(ABC):
     """Abstract base class for authentication providers.
