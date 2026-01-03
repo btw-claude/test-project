@@ -62,7 +62,10 @@ class AuthProvider(ABC):
             dict: Response from the authentication API containing identity info.
 
         Raises:
-            Exception: If validation fails or the API request errors.
+            AuthenticationError: If credentials are invalid, expired, or revoked.
+            ConnectionError: If network issues persist after all retry attempts.
+            TimeoutError: If the request times out after all retry attempts.
+            ValueError: If the authentication configuration is invalid.
         """
         ...
 
