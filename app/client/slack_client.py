@@ -1,6 +1,7 @@
 """Async HTTP client for Slack API."""
 
-from typing import Any
+from types import TracebackType
+from typing import Any, Self
 
 import httpx
 
@@ -37,7 +38,12 @@ class SlackClient:
     """Async HTTP client for Slack Web API.
 
     This client provides methods to interact with the Slack Web API
-    using async HTTP requests.
+    using async HTTP requests. Uses a shared httpx.AsyncClient for
+    connection pooling and improved performance.
+
+    Usage:
+        async with SlackClient(auth_provider) as client:
+            await client.send_message("#general", "Hello!")
     """
 
     BASE_URL = "https://slack.com/api"
@@ -49,6 +55,23 @@ class SlackClient:
             auth_provider: Authentication provider for API requests.
         """
         self._auth_provider = auth_provider
+        self._client: httpx.AsyncClient | None = None
+
+    async def __aenter__(self) -> Self:
+        """Enter the async context manager and create the HTTP client."""
+        self._client = httpx.AsyncClient()
+        return self
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
+        """Exit the async context manager and close the HTTP client."""
+        if self._client is not None:
+            await self._client.aclose()
+            self._client = None
 
     async def send_message(self, channel: str, text: str) -> dict[str, Any]:
         """Send a message to a Slack channel or user.
@@ -62,7 +85,14 @@ class SlackClient:
 
         Raises:
             SlackError: If the API request fails or returns an error.
+            RuntimeError: If the client is not initialized via context manager.
         """
+        if self._client is None:
+            raise RuntimeError(
+                "SlackClient must be used as an async context manager. "
+                "Use 'async with SlackClient(auth_provider) as client:'"
+            )
+
         url = f"{self.BASE_URL}/chat.postMessage"
         headers = self._auth_provider.get_auth_headers()
         headers["Content-Type"] = "application/json"
@@ -72,28 +102,27 @@ class SlackClient:
             "text": text,
         }
 
-        async with httpx.AsyncClient() as client:
-            try:
-                response = await client.post(url, headers=headers, json=payload)
-                response.raise_for_status()
-            except httpx.HTTPStatusError as e:
-                raise SlackError(
-                    f"HTTP error occurred: {e.response.status_code}",
-                    error_code="http_error",
-                ) from e
-            except httpx.RequestError as e:
-                raise SlackError(
-                    f"Request failed: {str(e)}",
-                    error_code="request_error",
-                ) from e
+        try:
+            response = await self._client.post(url, headers=headers, json=payload)
+            response.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            raise SlackError(
+                f"HTTP error occurred: {e.response.status_code}",
+                error_code="http_error",
+            ) from e
+        except httpx.RequestError as e:
+            raise SlackError(
+                f"Request failed: {str(e)}",
+                error_code="request_error",
+            ) from e
 
-            data = response.json()
+        data = response.json()
 
-            if not data.get("ok"):
-                error_code = data.get("error", "unknown_error")
-                raise SlackError(
-                    f"Slack API error: {error_code}",
-                    error_code=error_code,
-                )
+        if not data.get("ok"):
+            error_code = data.get("error", "unknown_error")
+            raise SlackError(
+                f"Slack API error: {error_code}",
+                error_code=error_code,
+            )
 
-            return data
+        return data

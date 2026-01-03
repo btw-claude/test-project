@@ -189,22 +189,44 @@ class TestSlackClient:
         """Test client initialization."""
         client = SlackClient(mock_auth_provider)
         assert client._auth_provider is mock_auth_provider
+        assert client._client is None
+
+    @pytest.mark.asyncio
+    async def test_context_manager_initializes_client(
+        self, mock_auth_provider: MockAuthProvider
+    ) -> None:
+        """Test that async context manager initializes the HTTP client."""
+        client = SlackClient(mock_auth_provider)
+        assert client._client is None
+
+        async with client:
+            assert client._client is not None
+
+        assert client._client is None
+
+    @pytest.mark.asyncio
+    async def test_send_message_without_context_manager_raises_error(
+        self, slack_client: SlackClient
+    ) -> None:
+        """Test that calling send_message without context manager raises RuntimeError."""
+        with pytest.raises(RuntimeError) as exc_info:
+            await slack_client.send_message("C12345", "Hello")
+
+        assert "async context manager" in str(exc_info.value)
 
     @pytest.mark.asyncio
     async def test_send_message_success(
         self,
-        slack_client: SlackClient,
+        mock_auth_provider: MockAuthProvider,
         mock_httpx_response: MagicMock,
     ) -> None:
         """Test successful message sending."""
-        with patch("httpx.AsyncClient") as mock_client_class:
-            mock_client = AsyncMock()
-            mock_client.__aenter__.return_value = mock_client
-            mock_client.__aexit__.return_value = None
-            mock_client.post.return_value = mock_httpx_response
-            mock_client_class.return_value = mock_client
+        mock_client = AsyncMock()
+        mock_client.post.return_value = mock_httpx_response
 
-            result = await slack_client.send_message("C12345", "Hello, World!")
+        with patch("httpx.AsyncClient", return_value=mock_client):
+            async with SlackClient(mock_auth_provider) as client:
+                result = await client.send_message("C12345", "Hello, World!")
 
             assert result["ok"] is True
             assert result["channel"] == "C12345"
@@ -217,62 +239,76 @@ class TestSlackClient:
     @pytest.mark.asyncio
     async def test_send_message_api_error(
         self,
-        slack_client: SlackClient,
+        mock_auth_provider: MockAuthProvider,
         mock_httpx_error_response: MagicMock,
     ) -> None:
         """Test message sending with Slack API error."""
-        with patch("httpx.AsyncClient") as mock_client_class:
-            mock_client = AsyncMock()
-            mock_client.__aenter__.return_value = mock_client
-            mock_client.__aexit__.return_value = None
-            mock_client.post.return_value = mock_httpx_error_response
-            mock_client_class.return_value = mock_client
+        mock_client = AsyncMock()
+        mock_client.post.return_value = mock_httpx_error_response
 
-            with pytest.raises(SlackError) as exc_info:
-                await slack_client.send_message("invalid-channel", "Hello")
+        with patch("httpx.AsyncClient", return_value=mock_client):
+            async with SlackClient(mock_auth_provider) as client:
+                with pytest.raises(SlackError) as exc_info:
+                    await client.send_message("invalid-channel", "Hello")
 
-            assert exc_info.value.error_code == "channel_not_found"
+                assert exc_info.value.error_code == "channel_not_found"
 
     @pytest.mark.asyncio
     async def test_send_message_http_error(
         self,
-        slack_client: SlackClient,
+        mock_auth_provider: MockAuthProvider,
     ) -> None:
         """Test message sending with HTTP error."""
-        with patch("httpx.AsyncClient") as mock_client_class:
-            mock_client = AsyncMock()
-            mock_client.__aenter__.return_value = mock_client
-            mock_client.__aexit__.return_value = None
+        mock_client = AsyncMock()
+        mock_response = MagicMock()
+        mock_response.status_code = 500
+        mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+            "Server error",
+            request=MagicMock(),
+            response=mock_response,
+        )
+        mock_client.post.return_value = mock_response
 
-            mock_response = MagicMock()
-            mock_response.status_code = 500
-            mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
-                "Server error",
-                request=MagicMock(),
-                response=mock_response,
-            )
-            mock_client.post.return_value = mock_response
-            mock_client_class.return_value = mock_client
+        with patch("httpx.AsyncClient", return_value=mock_client):
+            async with SlackClient(mock_auth_provider) as client:
+                with pytest.raises(SlackError) as exc_info:
+                    await client.send_message("C12345", "Hello")
 
-            with pytest.raises(SlackError) as exc_info:
-                await slack_client.send_message("C12345", "Hello")
-
-            assert exc_info.value.error_code == "http_error"
+                assert exc_info.value.error_code == "http_error"
 
     @pytest.mark.asyncio
     async def test_send_message_request_error(
         self,
-        slack_client: SlackClient,
+        mock_auth_provider: MockAuthProvider,
     ) -> None:
         """Test message sending with request error."""
-        with patch("httpx.AsyncClient") as mock_client_class:
-            mock_client = AsyncMock()
-            mock_client.__aenter__.return_value = mock_client
-            mock_client.__aexit__.return_value = None
-            mock_client.post.side_effect = httpx.RequestError("Connection failed")
-            mock_client_class.return_value = mock_client
+        mock_client = AsyncMock()
+        mock_client.post.side_effect = httpx.RequestError("Connection failed")
 
-            with pytest.raises(SlackError) as exc_info:
-                await slack_client.send_message("C12345", "Hello")
+        with patch("httpx.AsyncClient", return_value=mock_client):
+            async with SlackClient(mock_auth_provider) as client:
+                with pytest.raises(SlackError) as exc_info:
+                    await client.send_message("C12345", "Hello")
 
-            assert exc_info.value.error_code == "request_error"
+                assert exc_info.value.error_code == "request_error"
+
+    @pytest.mark.asyncio
+    async def test_multiple_messages_use_same_client(
+        self,
+        mock_auth_provider: MockAuthProvider,
+        mock_httpx_response: MagicMock,
+    ) -> None:
+        """Test that multiple messages reuse the same HTTP client for connection pooling."""
+        mock_client = AsyncMock()
+        mock_client.post.return_value = mock_httpx_response
+
+        with patch("httpx.AsyncClient", return_value=mock_client) as mock_class:
+            async with SlackClient(mock_auth_provider) as client:
+                await client.send_message("C12345", "Message 1")
+                await client.send_message("C12345", "Message 2")
+                await client.send_message("C12345", "Message 3")
+
+            # AsyncClient should only be instantiated once
+            mock_class.assert_called_once()
+            # All three messages should be sent through the same client
+            assert mock_client.post.call_count == 3
