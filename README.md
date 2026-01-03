@@ -75,6 +75,20 @@ API_HOST=0.0.0.0
 API_PORT=8000
 ```
 
+### Security Note: API Host Configuration
+
+The default `API_HOST=0.0.0.0` binds the server to all network interfaces, which is the appropriate setting for containerized deployments (Docker, Kubernetes) where the container network handles access control.
+
+**For local development**, you may want to use `API_HOST=127.0.0.1` to bind only to localhost, preventing external network access to your development server:
+
+```env
+API_HOST=127.0.0.1  # Only accessible from localhost
+```
+
+**When to use each setting:**
+- `0.0.0.0` - Container deployments, or when you need to access the server from other machines on your network
+- `127.0.0.1` - Local development when you only need access from your own machine
+
 ### Slack App Setup
 
 1. Go to [Slack API Apps](https://api.slack.com/apps) and create a new app
