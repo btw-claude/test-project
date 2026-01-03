@@ -31,14 +31,14 @@ echo
 # Check health endpoint
 echo "Health check..."
 if command -v curl > /dev/null 2>&1; then
-    HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$HEALTH_URL" 2>/dev/null || echo "000")
+    HTTP_CODE=$(curl -s --max-time 5 -o /dev/null -w "%{http_code}" "$HEALTH_URL" 2>/dev/null || echo "000")
     if [ "$HTTP_CODE" = "200" ]; then
         echo "Health: HEALTHY"
         echo
         echo "Response:"
-        curl -s "$HEALTH_URL" | python3 -m json.tool 2>/dev/null || curl -s "$HEALTH_URL"
+        curl -s --max-time 5 "$HEALTH_URL" | python3 -m json.tool 2>/dev/null || curl -s --max-time 5 "$HEALTH_URL"
     elif [ "$HTTP_CODE" = "000" ]; then
-        echo "Health: UNREACHABLE (connection failed)"
+        echo "Health: UNREACHABLE (connection failed or timeout)"
     else
         echo "Health: UNHEALTHY (HTTP $HTTP_CODE)"
     fi
