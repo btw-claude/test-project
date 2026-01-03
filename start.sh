@@ -30,6 +30,13 @@ if [ -d "$SCRIPT_DIR/venv" ]; then
     source "$SCRIPT_DIR/venv/bin/activate"
 fi
 
+# Verify app module can be imported
+if ! python -c "import app" 2>/dev/null; then
+    echo "Error: Unable to import 'app' module."
+    echo "Please ensure dependencies are installed: pip install -r requirements.txt"
+    exit 1
+fi
+
 echo "Starting Slack Agent..."
 
 # Start the server in the background
