@@ -1,11 +1,14 @@
 """MCP tools for Slack messaging."""
 
+import logging
 from functools import lru_cache
 from typing import Any
 
 from app.auth.bearer import BearerTokenAuth
 from app.client.slack_client import SlackClient, SlackError
 from app.config.settings import get_settings
+
+logger = logging.getLogger(__name__)
 
 
 @lru_cache(maxsize=1)
@@ -26,6 +29,7 @@ def reset_slack_client() -> None:
     Call this function when the Slack configuration changes
     and a fresh client instance is needed.
     """
+    logger.debug("Clearing cached SlackClient instance")
     get_slack_client.cache_clear()
 
 
