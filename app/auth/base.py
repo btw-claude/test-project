@@ -38,6 +38,24 @@ class AuthProvider(ABC):
         """
         ...
 
+    @abstractmethod
+    async def validate_with_api(self, timeout: float = 10.0) -> dict:
+        """Validate credentials against the authentication API.
+
+        This method should make an API call to verify the credentials are valid
+        and return information about the authenticated identity.
+
+        Args:
+            timeout: Request timeout in seconds.
+
+        Returns:
+            dict: Response from the authentication API containing identity info.
+
+        Raises:
+            Exception: If validation fails or the API request errors.
+        """
+        ...
+
     def apply_auth(self, request_kwargs: dict[str, Any]) -> dict[str, Any]:
         """Apply authentication to request kwargs.
 
