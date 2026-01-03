@@ -1,6 +1,11 @@
 """Authentication module for Slack API."""
 
-from app.auth.base import AuthProvider
+from app.auth.base import AuthenticationError, AuthProvider
 from app.auth.bearer import VALID_TOKEN_PREFIXES, BearerTokenAuth
 
-__all__ = ["AuthProvider", "BearerTokenAuth", "VALID_TOKEN_PREFIXES"]
+__all__ = [
+    "AuthenticationError",
+    "AuthProvider",
+    "BearerTokenAuth",
+    "VALID_TOKEN_PREFIXES",
+]
