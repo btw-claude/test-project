@@ -55,6 +55,12 @@ class Settings(BaseSettings):
         description="API port number",
     )
 
+    # CORS Configuration
+    cors_origins: list[str] = Field(
+        default=["*"],
+        description="Allowed CORS origins. Use ['*'] for development, restrict for production.",
+    )
+
 
 @lru_cache
 def get_settings() -> Settings:

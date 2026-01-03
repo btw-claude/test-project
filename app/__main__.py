@@ -32,9 +32,6 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-# Global executor reference for request handlers
-_executor: AgentExecutor | None = None
-
 
 def get_agent_card() -> AgentCard:
     """Create the agent card with skills for the Slack Agent.
@@ -99,7 +96,8 @@ async def task_submit_endpoint(request: Request) -> JSONResponse:
     Returns:
         JSONResponse: Task submission result with task ID.
     """
-    if _executor is None:
+    executor: AgentExecutor | None = getattr(request.app.state, "executor", None)
+    if executor is None:
         return JSONResponse(
             {"error": "Agent executor not initialized"},
             status_code=503,
@@ -116,7 +114,7 @@ async def task_submit_endpoint(request: Request) -> JSONResponse:
                 status_code=400,
             )
 
-        task_id = _executor.submit_task(message, metadata)
+        task_id = executor.submit_task(message, metadata)
         return JSONResponse({
             "task_id": task_id,
             "status": "pending",
@@ -138,7 +136,8 @@ async def task_status_endpoint(request: Request) -> JSONResponse:
     Returns:
         JSONResponse: Task status information.
     """
-    if _executor is None:
+    executor: AgentExecutor | None = getattr(request.app.state, "executor", None)
+    if executor is None:
         return JSONResponse(
             {"error": "Agent executor not initialized"},
             status_code=503,
@@ -147,8 +146,8 @@ async def task_status_endpoint(request: Request) -> JSONResponse:
     task_id = request.path_params.get("task_id", "")
 
     try:
-        status = _executor.get_task_status(task_id)
-        result = _executor.get_task_result(task_id)
+        status = executor.get_task_status(task_id)
+        result = executor.get_task_result(task_id)
 
         response: dict[str, Any] = {
             "task_id": task_id,
@@ -181,7 +180,8 @@ async def task_execute_endpoint(request: Request) -> JSONResponse:
     Returns:
         JSONResponse: Task execution result.
     """
-    if _executor is None:
+    executor: AgentExecutor | None = getattr(request.app.state, "executor", None)
+    if executor is None:
         return JSONResponse(
             {"error": "Agent executor not initialized"},
             status_code=503,
@@ -190,7 +190,7 @@ async def task_execute_endpoint(request: Request) -> JSONResponse:
     task_id = request.path_params.get("task_id", "")
 
     try:
-        result = await _executor.execute_task(task_id)
+        result = await executor.execute_task(task_id)
         return JSONResponse({
             "task_id": task_id,
             "result": dict(result),
@@ -236,8 +236,6 @@ async def lifespan(app: Starlette) -> AsyncIterator[None]:
     Yields:
         None
     """
-    global _executor
-
     logger.info("Starting Slack Agent...")
 
     # Initialize settings and Slack client
@@ -245,9 +243,10 @@ async def lifespan(app: Starlette) -> AsyncIterator[None]:
     client = create_slack_client(settings)
     initialize_tools(client)
 
-    # Create and start the executor
-    _executor = create_agent_executor(settings=settings)
-    await _executor.start()
+    # Create and start the executor, store in app.state
+    executor = create_agent_executor(settings=settings)
+    await executor.start()
+    app.state.executor = executor
 
     logger.info("Slack Agent started successfully")
     logger.info(f"Agent card: {get_agent_card()}")
@@ -256,8 +255,9 @@ async def lifespan(app: Starlette) -> AsyncIterator[None]:
 
     # Shutdown
     logger.info("Shutting down Slack Agent...")
-    if _executor is not None:
-        await _executor.stop()
+    executor = getattr(app.state, "executor", None)
+    if executor is not None:
+        await executor.stop()
     logger.info("Slack Agent shutdown complete")
 
 
@@ -290,7 +290,7 @@ def create_app(settings: Settings | None = None) -> Starlette:
     middleware = [
         Middleware(
             CORSMiddleware,
-            allow_origins=["*"],
+            allow_origins=settings.cors_origins,
             allow_credentials=True,
             allow_methods=["*"],
             allow_headers=["*"],
