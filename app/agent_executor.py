@@ -197,6 +197,19 @@ class AsyncSafeTaskStorage:
         """
         self._tasks[task_id] = task
 
+    def list_all_sync(self) -> list[Task]:
+        """Synchronously list all tasks (for non-async contexts).
+
+        Warning: This method does not use locking. Use only when
+        you're certain no concurrent access is happening, such as
+        in single-threaded contexts or when the event loop is not
+        running concurrently.
+
+        Returns:
+            list[Task]: All stored tasks.
+        """
+        return list(self._tasks.values())
+
 
 class AgentExecutor:
     """A2A protocol adapter for executing tasks with the Slack agent.
@@ -535,7 +548,7 @@ class AgentExecutor:
         Returns:
             list[Task]: List of tasks matching the filter.
         """
-        all_tasks = list(self._task_storage._tasks.values())  # noqa: SLF001
+        all_tasks = self._task_storage.list_all_sync()
         if status is None:
             return all_tasks
         return [t for t in all_tasks if t.status == status]
