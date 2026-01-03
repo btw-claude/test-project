@@ -205,8 +205,15 @@ class AsyncSafeTaskStorage:
         in single-threaded contexts or when the event loop is not
         running concurrently.
 
+        Note: The returned list is a shallow copy of the internal values,
+        which provides protection against external modification of the
+        returned list structure (e.g., adding or removing elements won't
+        affect the internal storage). However, the Task objects themselves
+        are not cloned, so callers should not mutate the returned Task
+        instances directly.
+
         Returns:
-            list[Task]: All stored tasks.
+            list[Task]: A shallow copy of all stored tasks.
         """
         return list(self._tasks.values())
 
