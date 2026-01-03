@@ -1,11 +1,14 @@
 """Bearer token authentication for Slack API."""
 
+import asyncio
+import random
+
 import httpx
 
 from app.auth.base import AuthProvider
 
 # Valid Slack token prefixes
-VALID_TOKEN_PREFIXES = ("xoxb-", "xoxa-", "xoxp-")
+VALID_TOKEN_PREFIXES = ("xoxb-", "xoxa-", "xoxp-", "xoxe-")
 
 
 class BearerTokenAuth(AuthProvider):
@@ -18,6 +21,7 @@ class BearerTokenAuth(AuthProvider):
         - xoxb-: Bot tokens
         - xoxa-: App-level tokens
         - xoxp-: User tokens
+        - xoxe-: Configuration tokens
     """
 
     def __init__(
@@ -83,32 +87,68 @@ class BearerTokenAuth(AuthProvider):
         """
         return self._token
 
-    async def validate_with_api(self, timeout: float = 10.0) -> dict:
+    async def validate_with_api(
+        self,
+        timeout: float = 10.0,
+        max_retries: int = 3,
+        base_delay: float = 1.0,
+        max_delay: float = 30.0,
+    ) -> dict:
         """Validate token against Slack's auth.test endpoint.
 
         This method makes an API call to Slack to verify the token is valid
-        and returns information about the authenticated identity.
+        and returns information about the authenticated identity. Uses
+        exponential backoff with jitter for retry logic on transient failures.
 
         Args:
             timeout: Request timeout in seconds.
+            max_retries: Maximum number of retry attempts for transient failures.
+            base_delay: Base delay in seconds for exponential backoff.
+            max_delay: Maximum delay in seconds between retries.
 
         Returns:
             dict: The auth.test response containing user_id, team_id, etc.
 
         Raises:
-            httpx.HTTPError: If the HTTP request fails.
+            httpx.HTTPError: If the HTTP request fails after all retries.
             ValueError: If the token is invalid according to Slack's API.
         """
         url = "https://slack.com/api/auth.test"
         headers = self.get_auth_headers()
 
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            response = await client.post(url, headers=headers)
-            response.raise_for_status()
-            data = response.json()
+        last_exception: Exception | None = None
 
-            if not data.get("ok"):
-                error = data.get("error", "unknown_error")
-                raise ValueError(f"Token validation failed: {error}")
+        for attempt in range(max_retries + 1):
+            try:
+                async with httpx.AsyncClient(timeout=timeout) as client:
+                    response = await client.post(url, headers=headers)
+                    response.raise_for_status()
+                    data = response.json()
 
-            return data
+                    if not data.get("ok"):
+                        error = data.get("error", "unknown_error")
+                        raise ValueError(f"Token validation failed: {error}")
+
+                    return data
+
+            except (httpx.TimeoutException, httpx.NetworkError) as e:
+                last_exception = e
+                if attempt < max_retries:
+                    delay = min(base_delay * (2**attempt), max_delay)
+                    jitter = random.uniform(0, delay * 0.1)
+                    await asyncio.sleep(delay + jitter)
+                    continue
+                raise
+
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code in (502, 503, 504) and attempt < max_retries:
+                    last_exception = e
+                    delay = min(base_delay * (2**attempt), max_delay)
+                    jitter = random.uniform(0, delay * 0.1)
+                    await asyncio.sleep(delay + jitter)
+                    continue
+                raise
+
+        if last_exception:
+            raise last_exception
+        raise RuntimeError("Unexpected exit from retry loop")
