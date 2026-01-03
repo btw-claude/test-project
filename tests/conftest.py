@@ -26,6 +26,16 @@ class MockAuthProvider(AuthProvider):
 
 
 @pytest.fixture
+def required_env_vars() -> dict[str, str]:
+    """Base required environment variables for Settings tests."""
+    return {
+        "SLACK_BOT_TOKEN": "xoxb-test",
+        "SLACK_APP_TOKEN": "xapp-test",
+        "SLACK_SIGNING_SECRET": "secret",
+    }
+
+
+@pytest.fixture
 def mock_auth_provider() -> MockAuthProvider:
     """Provide a mock authentication provider."""
     return MockAuthProvider()
