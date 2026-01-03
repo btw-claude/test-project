@@ -11,7 +11,7 @@ from enum import Enum
 from typing import Any
 
 from app.config.settings import Settings, get_settings
-from app.helpers import AgentCard, create_agent_card
+from app.helpers import AgentCard
 from app.mcp_server import create_sdk_mcp_config
 
 logger = logging.getLogger(__name__)
@@ -137,7 +137,7 @@ class SlackAgent:
         Returns:
             AgentCard: Agent card with capabilities.
         """
-        return create_agent_card(
+        return AgentCard(
             name="slack-agent",
             description="AI agent for Slack messaging operations",
             version="0.1.0",

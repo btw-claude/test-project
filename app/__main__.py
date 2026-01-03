@@ -20,7 +20,7 @@ from starlette.routing import Route
 from app.agent import SlackAgent, create_slack_agent
 from app.agent_executor import AgentExecutor, create_agent_executor
 from app.config.settings import Settings, get_settings
-from app.helpers import AgentCard, create_agent_card
+from app.helpers import AgentCard
 from app.mcp_server import create_standalone_mcp_server, initialize_tools, create_slack_client
 
 
@@ -39,7 +39,7 @@ def get_agent_card() -> AgentCard:
     Returns:
         AgentCard: Agent card describing capabilities and skills.
     """
-    return create_agent_card(
+    return AgentCard(
         name="slack-agent",
         description="AI agent for Slack messaging operations with A2A protocol support",
         version="0.1.0",
