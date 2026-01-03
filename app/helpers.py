@@ -6,7 +6,7 @@ for convenient access throughout the application.
 
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class TaskResult(BaseModel):
@@ -18,6 +18,8 @@ class TaskResult(BaseModel):
         data: Optional data payload from the task.
         error: Optional error message if task failed.
     """
+
+    model_config = ConfigDict(strict=True)
 
     success: bool
     message: str
@@ -35,6 +37,8 @@ class AgentCard(BaseModel):
         capabilities: List of capability strings.
         tools: List of tool names available to the agent.
     """
+
+    model_config = ConfigDict(strict=True)
 
     name: str
     description: str
