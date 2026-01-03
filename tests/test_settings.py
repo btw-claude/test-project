@@ -12,18 +12,15 @@ from app.config.settings import Settings, get_settings
 class TestSettings:
     """Tests for Settings class."""
 
-    def test_settings_with_required_env_vars(self) -> None:
+    def test_settings_with_required_env_vars(
+        self, required_env_vars: dict[str, str]
+    ) -> None:
         """Test that settings loads correctly with required environment variables."""
-        env_vars = {
-            "SLACK_BOT_TOKEN": "xoxb-test-bot-token",
-            "SLACK_APP_TOKEN": "xapp-test-app-token",
-            "SLACK_SIGNING_SECRET": "test-signing-secret",
-        }
-        with patch.dict(os.environ, env_vars, clear=True):
+        with patch.dict(os.environ, required_env_vars, clear=True):
             settings = Settings()
-            assert settings.slack_bot_token == "xoxb-test-bot-token"
-            assert settings.slack_app_token == "xapp-test-app-token"
-            assert settings.slack_signing_secret == "test-signing-secret"
+            assert settings.slack_bot_token == required_env_vars["SLACK_BOT_TOKEN"]
+            assert settings.slack_app_token == required_env_vars["SLACK_APP_TOKEN"]
+            assert settings.slack_signing_secret == required_env_vars["SLACK_SIGNING_SECRET"]
 
     def test_settings_missing_required_vars(self) -> None:
         """Test that settings raises error when required vars are missing."""
@@ -31,14 +28,11 @@ class TestSettings:
             with pytest.raises(ValidationError):
                 Settings()
 
-    def test_settings_default_values(self) -> None:
+    def test_settings_default_values(
+        self, required_env_vars: dict[str, str]
+    ) -> None:
         """Test that settings has correct default values."""
-        env_vars = {
-            "SLACK_BOT_TOKEN": "xoxb-test",
-            "SLACK_APP_TOKEN": "xapp-test",
-            "SLACK_SIGNING_SECRET": "secret",
-        }
-        with patch.dict(os.environ, env_vars, clear=True):
+        with patch.dict(os.environ, required_env_vars, clear=True):
             settings = Settings()
             assert settings.app_env == "development"
             assert settings.app_debug is False
@@ -46,12 +40,12 @@ class TestSettings:
             assert settings.api_host == "0.0.0.0"
             assert settings.api_port == 8000
 
-    def test_settings_custom_values(self) -> None:
+    def test_settings_custom_values(
+        self, required_env_vars: dict[str, str]
+    ) -> None:
         """Test that settings correctly reads custom environment values."""
         env_vars = {
-            "SLACK_BOT_TOKEN": "xoxb-custom",
-            "SLACK_APP_TOKEN": "xapp-custom",
-            "SLACK_SIGNING_SECRET": "custom-secret",
+            **required_env_vars,
             "APP_ENV": "production",
             "APP_DEBUG": "true",
             "APP_LOG_LEVEL": "DEBUG",
@@ -79,36 +73,36 @@ class TestSettings:
             assert settings.slack_app_token == "xapp-upper"
             assert settings.slack_signing_secret == "mixed-case"
 
-    def test_settings_app_env_validation(self) -> None:
+    def test_settings_app_env_validation(
+        self, required_env_vars: dict[str, str]
+    ) -> None:
         """Test that app_env only accepts valid values."""
         env_vars = {
-            "SLACK_BOT_TOKEN": "xoxb-test",
-            "SLACK_APP_TOKEN": "xapp-test",
-            "SLACK_SIGNING_SECRET": "secret",
+            **required_env_vars,
             "APP_ENV": "invalid_environment",
         }
         with patch.dict(os.environ, env_vars, clear=True):
             with pytest.raises(ValidationError):
                 Settings()
 
-    def test_settings_log_level_validation(self) -> None:
+    def test_settings_log_level_validation(
+        self, required_env_vars: dict[str, str]
+    ) -> None:
         """Test that app_log_level only accepts valid values."""
         env_vars = {
-            "SLACK_BOT_TOKEN": "xoxb-test",
-            "SLACK_APP_TOKEN": "xapp-test",
-            "SLACK_SIGNING_SECRET": "secret",
+            **required_env_vars,
             "APP_LOG_LEVEL": "INVALID_LEVEL",
         }
         with patch.dict(os.environ, env_vars, clear=True):
             with pytest.raises(ValidationError):
                 Settings()
 
-    def test_settings_ignores_extra_env_vars(self) -> None:
+    def test_settings_ignores_extra_env_vars(
+        self, required_env_vars: dict[str, str]
+    ) -> None:
         """Test that settings ignores extra environment variables."""
         env_vars = {
-            "SLACK_BOT_TOKEN": "xoxb-test",
-            "SLACK_APP_TOKEN": "xapp-test",
-            "SLACK_SIGNING_SECRET": "secret",
+            **required_env_vars,
             "EXTRA_UNKNOWN_VAR": "should-be-ignored",
         }
         with patch.dict(os.environ, env_vars, clear=True):
@@ -119,26 +113,20 @@ class TestSettings:
 class TestGetSettings:
     """Tests for get_settings function."""
 
-    def test_get_settings_returns_settings(self) -> None:
+    def test_get_settings_returns_settings(
+        self, required_env_vars: dict[str, str]
+    ) -> None:
         """Test that get_settings returns a Settings instance."""
-        env_vars = {
-            "SLACK_BOT_TOKEN": "xoxb-test",
-            "SLACK_APP_TOKEN": "xapp-test",
-            "SLACK_SIGNING_SECRET": "secret",
-        }
-        with patch.dict(os.environ, env_vars, clear=True):
+        with patch.dict(os.environ, required_env_vars, clear=True):
             get_settings.cache_clear()
             settings = get_settings()
             assert isinstance(settings, Settings)
 
-    def test_get_settings_is_cached(self) -> None:
+    def test_get_settings_is_cached(
+        self, required_env_vars: dict[str, str]
+    ) -> None:
         """Test that get_settings returns the same cached instance."""
-        env_vars = {
-            "SLACK_BOT_TOKEN": "xoxb-test",
-            "SLACK_APP_TOKEN": "xapp-test",
-            "SLACK_SIGNING_SECRET": "secret",
-        }
-        with patch.dict(os.environ, env_vars, clear=True):
+        with patch.dict(os.environ, required_env_vars, clear=True):
             get_settings.cache_clear()
             settings1 = get_settings()
             settings2 = get_settings()
