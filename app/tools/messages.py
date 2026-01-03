@@ -1,10 +1,23 @@
 """MCP tools for Slack messaging."""
 
+from functools import lru_cache
 from typing import Any
 
 from app.auth.bearer import BearerTokenAuth
 from app.client.slack_client import SlackClient, SlackError
 from app.config.settings import get_settings
+
+
+@lru_cache(maxsize=1)
+def get_slack_client() -> SlackClient:
+    """Get a cached SlackClient instance.
+
+    Returns:
+        SlackClient: A cached Slack client configured with the bot token.
+    """
+    settings = get_settings()
+    auth_provider = BearerTokenAuth(settings.slack_bot_token)
+    return SlackClient(auth_provider)
 
 
 async def send_user_message(user_id: str, text: str) -> dict[str, Any]:
@@ -20,9 +33,7 @@ async def send_user_message(user_id: str, text: str) -> dict[str, Any]:
     Raises:
         SlackError: If the API request fails or returns an error.
     """
-    settings = get_settings()
-    auth_provider = BearerTokenAuth(settings.slack_bot_token)
-    client = SlackClient(auth_provider)
+    client = get_slack_client()
     return await client.send_message(channel=user_id, text=text)
 
 
@@ -39,7 +50,5 @@ async def send_channel_message(channel_id: str, text: str) -> dict[str, Any]:
     Raises:
         SlackError: If the API request fails or returns an error.
     """
-    settings = get_settings()
-    auth_provider = BearerTokenAuth(settings.slack_bot_token)
-    client = SlackClient(auth_provider)
+    client = get_slack_client()
     return await client.send_message(channel=channel_id, text=text)
