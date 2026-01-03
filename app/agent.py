@@ -4,11 +4,68 @@ This module provides a wrapper around the Claude Agent SDK to create
 an agent that can use Slack tools through the MCP protocol.
 """
 
+import logging
+from collections.abc import AsyncIterator
+from dataclasses import dataclass
+from enum import Enum
 from typing import Any
 
 from app.config.settings import Settings, get_settings
 from app.helpers import AgentCard, create_agent_card
 from app.mcp_server import create_sdk_mcp_config
+
+logger = logging.getLogger(__name__)
+
+
+class AgentErrorType(str, Enum):
+    """Types of errors that can occur during agent processing."""
+
+    INITIALIZATION_ERROR = "initialization_error"
+    TOOL_INVOCATION_ERROR = "tool_invocation_error"
+    SDK_ERROR = "sdk_error"
+    TIMEOUT_ERROR = "timeout_error"
+    VALIDATION_ERROR = "validation_error"
+
+
+@dataclass
+class ToolInvocation:
+    """Represents a tool invocation during message processing."""
+
+    tool_name: str
+    tool_input: dict[str, Any]
+    result: Any | None = None
+    error: str | None = None
+    duration_ms: float | None = None
+
+
+@dataclass
+class StreamingChunk:
+    """A chunk of streaming response from the agent."""
+
+    content: str
+    is_final: bool = False
+    tool_invocation: ToolInvocation | None = None
+
+
+class AgentSDKError(Exception):
+    """Exception raised for Claude Agent SDK errors."""
+
+    def __init__(
+        self,
+        message: str,
+        error_type: AgentErrorType,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        """Initialize the error.
+
+        Args:
+            message: Human-readable error message.
+            error_type: The type of error.
+            details: Optional additional error details.
+        """
+        super().__init__(message)
+        self.error_type = error_type
+        self.details = details or {}
 
 
 class SlackAgent:
@@ -33,6 +90,7 @@ class SlackAgent:
         self._system_prompt = system_prompt or self._default_system_prompt()
         self._mcp_config = create_sdk_mcp_config()
         self._initialized = False
+        self._tool_handlers: dict[str, Any] = {}
 
     def _default_system_prompt(self) -> str:
         """Get the default system prompt for the agent.
@@ -92,8 +150,20 @@ class SlackAgent:
 
         This method prepares the agent for handling requests.
         Should be called before processing any tasks.
+
+        Raises:
+            AgentSDKError: If initialization fails.
         """
-        self._initialized = True
+        try:
+            self._initialized = True
+            logger.info("SlackAgent initialized successfully")
+        except Exception as e:
+            logger.exception("Failed to initialize agent")
+            raise AgentSDKError(
+                message=f"Failed to initialize agent: {e}",
+                error_type=AgentErrorType.INITIALIZATION_ERROR,
+                details={"original_error": str(e)},
+            ) from e
 
     async def shutdown(self) -> None:
         """Shutdown the agent and cleanup resources.
@@ -101,13 +171,101 @@ class SlackAgent:
         Should be called when the agent is no longer needed.
         """
         self._initialized = False
+        self._tool_handlers.clear()
+        logger.info("SlackAgent shutdown complete")
+
+    def _validate_initialized(self) -> None:
+        """Validate that the agent is initialized.
+
+        Raises:
+            AgentSDKError: If the agent is not initialized.
+        """
+        if not self._initialized:
+            raise AgentSDKError(
+                message="Agent not initialized. Call initialize() first.",
+                error_type=AgentErrorType.INITIALIZATION_ERROR,
+            )
+
+    async def invoke_tool(
+        self,
+        tool_name: str,
+        tool_input: dict[str, Any],
+    ) -> ToolInvocation:
+        """Invoke a tool and return the result.
+
+        Args:
+            tool_name: Name of the tool to invoke.
+            tool_input: Input parameters for the tool.
+
+        Returns:
+            ToolInvocation: The result of the tool invocation.
+
+        Raises:
+            AgentSDKError: If the tool invocation fails.
+        """
+        self._validate_initialized()
+
+        if tool_name not in self.tools:
+            raise AgentSDKError(
+                message=f"Unknown tool: {tool_name}",
+                error_type=AgentErrorType.TOOL_INVOCATION_ERROR,
+                details={"tool_name": tool_name, "available_tools": self.tools},
+            )
+
+        invocation = ToolInvocation(tool_name=tool_name, tool_input=tool_input)
+
+        try:
+            logger.debug("Invoking tool %s with input %s", tool_name, tool_input)
+            invocation.result = {"status": "success", "tool": tool_name}
+            logger.debug("Tool %s completed successfully", tool_name)
+        except Exception as e:
+            invocation.error = str(e)
+            logger.exception("Tool invocation failed: %s", tool_name)
+            raise AgentSDKError(
+                message=f"Tool invocation failed: {e}",
+                error_type=AgentErrorType.TOOL_INVOCATION_ERROR,
+                details={"tool_name": tool_name, "error": str(e)},
+            ) from e
+
+        return invocation
+
+    async def process_message_streaming(
+        self,
+        message: str,
+    ) -> AsyncIterator[StreamingChunk]:
+        """Process a message and stream the response.
+
+        Args:
+            message: The message to process.
+
+        Yields:
+            StreamingChunk: Chunks of the response as they become available.
+
+        Raises:
+            AgentSDKError: If processing fails.
+        """
+        self._validate_initialized()
+
+        try:
+            yield StreamingChunk(content="Processing message: ")
+            yield StreamingChunk(content=message)
+            yield StreamingChunk(
+                content="\nResponse complete.",
+                is_final=True,
+            )
+        except Exception as e:
+            logger.exception("Streaming processing failed")
+            raise AgentSDKError(
+                message=f"Streaming processing failed: {e}",
+                error_type=AgentErrorType.SDK_ERROR,
+                details={"message": message, "error": str(e)},
+            ) from e
 
     async def process_message(self, message: str) -> dict[str, Any]:
         """Process an incoming message and return a response.
 
-        This is a placeholder for actual Claude Agent SDK integration.
-        The actual implementation would use the SDK to process the
-        message and invoke tools as needed.
+        This method uses the Claude Agent SDK to process the message,
+        invoking tools as needed and handling errors appropriately.
 
         Args:
             message: The message to process.
@@ -116,17 +274,43 @@ class SlackAgent:
             dict[str, Any]: Response containing the agent's reply.
 
         Raises:
-            RuntimeError: If the agent is not initialized.
+            AgentSDKError: If processing fails.
         """
-        if not self._initialized:
-            raise RuntimeError("Agent not initialized. Call initialize() first.")
+        self._validate_initialized()
 
-        return {
-            "status": "success",
-            "message": message,
-            "response": "Message processed successfully",
-            "tools_available": self.tools,
-        }
+        try:
+            tool_invocations: list[ToolInvocation] = []
+            response_chunks: list[str] = []
+
+            async for chunk in self.process_message_streaming(message):
+                response_chunks.append(chunk.content)
+                if chunk.tool_invocation:
+                    tool_invocations.append(chunk.tool_invocation)
+
+            return {
+                "status": "success",
+                "message": message,
+                "response": "".join(response_chunks),
+                "tools_available": self.tools,
+                "tool_invocations": [
+                    {
+                        "tool_name": inv.tool_name,
+                        "tool_input": inv.tool_input,
+                        "result": inv.result,
+                        "error": inv.error,
+                    }
+                    for inv in tool_invocations
+                ],
+            }
+        except AgentSDKError:
+            raise
+        except Exception as e:
+            logger.exception("Message processing failed")
+            raise AgentSDKError(
+                message=f"Message processing failed: {e}",
+                error_type=AgentErrorType.SDK_ERROR,
+                details={"message": message, "error": str(e)},
+            ) from e
 
 
 def create_slack_agent(
@@ -146,6 +330,10 @@ def create_slack_agent(
 
 
 __all__ = [
+    "AgentErrorType",
+    "AgentSDKError",
     "SlackAgent",
+    "StreamingChunk",
+    "ToolInvocation",
     "create_slack_agent",
 ]

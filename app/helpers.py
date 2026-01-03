@@ -4,26 +4,45 @@ This module re-exports commonly used A2A (Agent-to-Agent) protocol utilities
 for convenient access throughout the application.
 """
 
-from typing import Any, TypedDict
+from typing import Any, NotRequired, Required, TypedDict
 
 
-class TaskResult(TypedDict, total=False):
-    """Result from a task execution."""
+class TaskResult(TypedDict, total=True):
+    """Result from a task execution.
 
-    success: bool
-    message: str
-    data: dict[str, Any]
-    error: str | None
+    Required fields:
+        success: Whether the task completed successfully.
+        message: Human-readable description of the result.
+
+    Optional fields:
+        data: Optional data payload from the task.
+        error: Optional error message if task failed.
+    """
+
+    success: Required[bool]
+    message: Required[str]
+    data: NotRequired[dict[str, Any]]
+    error: NotRequired[str | None]
 
 
-class AgentCard(TypedDict, total=False):
-    """Agent card describing agent capabilities."""
+class AgentCard(TypedDict, total=True):
+    """Agent card describing agent capabilities.
 
-    name: str
-    description: str
-    version: str
-    capabilities: list[str]
-    tools: list[str]
+    Required fields:
+        name: The agent's name.
+        description: Description of what the agent does.
+        version: Agent version string.
+
+    Optional fields:
+        capabilities: List of capability strings.
+        tools: List of tool names available to the agent.
+    """
+
+    name: Required[str]
+    description: Required[str]
+    version: Required[str]
+    capabilities: NotRequired[list[str]]
+    tools: NotRequired[list[str]]
 
 
 def create_task_result(
