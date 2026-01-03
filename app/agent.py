@@ -216,6 +216,8 @@ class SlackAgent:
 
         try:
             logger.debug("Invoking tool %s with input %s", tool_name, tool_input)
+            # TODO(SLACK-25): Replace placeholder with actual Claude Agent SDK tool invocation.
+            # This should call the SDK's tool execution method with proper MCP integration.
             invocation.result = {"status": "success", "tool": tool_name}
             logger.debug("Tool %s completed successfully", tool_name)
         except Exception as e:
@@ -247,6 +249,9 @@ class SlackAgent:
         self._validate_initialized()
 
         try:
+            # TODO(SLACK-25): Replace skeleton implementation with actual Claude Agent SDK streaming.
+            # This should integrate with the SDK's streaming API to yield chunks as they arrive,
+            # including tool invocations and their results.
             yield StreamingChunk(content="Processing message: ")
             yield StreamingChunk(content=message)
             yield StreamingChunk(
