@@ -39,14 +39,24 @@ class AuthProvider(ABC):
         ...
 
     @abstractmethod
-    async def validate_with_api(self, timeout: float = 10.0) -> dict:
+    async def validate_with_api(
+        self,
+        timeout: float = 10.0,
+        max_retries: int = 3,
+        base_delay: float = 1.0,
+        max_delay: float = 30.0,
+    ) -> dict:
         """Validate credentials against the authentication API.
 
         This method should make an API call to verify the credentials are valid
-        and return information about the authenticated identity.
+        and return information about the authenticated identity. Implementations
+        should support retry logic with exponential backoff for transient failures.
 
         Args:
             timeout: Request timeout in seconds.
+            max_retries: Maximum number of retry attempts for transient failures.
+            base_delay: Base delay in seconds for exponential backoff.
+            max_delay: Maximum delay in seconds between retries.
 
         Returns:
             dict: Response from the authentication API containing identity info.
