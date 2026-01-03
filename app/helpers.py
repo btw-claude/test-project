@@ -72,37 +72,8 @@ def create_task_result(
     )
 
 
-def create_agent_card(
-    name: str,
-    description: str,
-    version: str,
-    capabilities: list[str] | None = None,
-    tools: list[str] | None = None,
-) -> AgentCard:
-    """Create an agent card describing the agent's capabilities.
-
-    Args:
-        name: The agent's name.
-        description: Description of what the agent does.
-        version: Agent version string.
-        capabilities: List of capability strings.
-        tools: List of tool names available to the agent.
-
-    Returns:
-        AgentCard: Agent card instance.
-    """
-    return AgentCard(
-        name=name,
-        description=description,
-        version=version,
-        capabilities=capabilities or [],
-        tools=tools or [],
-    )
-
-
 __all__ = [
     "TaskResult",
     "AgentCard",
     "create_task_result",
-    "create_agent_card",
 ]
