@@ -68,7 +68,7 @@ async def agent_card_endpoint(request: Request) -> JSONResponse:
         JSONResponse: Agent card as JSON.
     """
     card = get_agent_card()
-    return JSONResponse(dict(card))
+    return JSONResponse(card.model_dump())
 
 
 async def health_endpoint(request: Request) -> JSONResponse:
@@ -155,7 +155,7 @@ async def task_status_endpoint(request: Request) -> JSONResponse:
         }
 
         if result is not None:
-            response["result"] = dict(result)
+            response["result"] = result.model_dump()
 
         return JSONResponse(response)
     except KeyError:
@@ -193,7 +193,7 @@ async def task_execute_endpoint(request: Request) -> JSONResponse:
         result = await executor.execute_task(task_id)
         return JSONResponse({
             "task_id": task_id,
-            "result": dict(result),
+            "result": result.model_dump(),
         })
     except KeyError:
         return JSONResponse(

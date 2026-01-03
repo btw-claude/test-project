@@ -4,45 +4,43 @@ This module re-exports commonly used A2A (Agent-to-Agent) protocol utilities
 for convenient access throughout the application.
 """
 
-from typing import Any, NotRequired, Required, TypedDict
+from typing import Any
+
+from pydantic import BaseModel, Field
 
 
-class TaskResult(TypedDict, total=True):
+class TaskResult(BaseModel):
     """Result from a task execution.
 
-    Required fields:
+    Attributes:
         success: Whether the task completed successfully.
         message: Human-readable description of the result.
-
-    Optional fields:
         data: Optional data payload from the task.
         error: Optional error message if task failed.
     """
 
-    success: Required[bool]
-    message: Required[str]
-    data: NotRequired[dict[str, Any]]
-    error: NotRequired[str | None]
+    success: bool
+    message: str
+    data: dict[str, Any] | None = Field(default=None)
+    error: str | None = Field(default=None)
 
 
-class AgentCard(TypedDict, total=True):
+class AgentCard(BaseModel):
     """Agent card describing agent capabilities.
 
-    Required fields:
+    Attributes:
         name: The agent's name.
         description: Description of what the agent does.
         version: Agent version string.
-
-    Optional fields:
         capabilities: List of capability strings.
         tools: List of tool names available to the agent.
     """
 
-    name: Required[str]
-    description: Required[str]
-    version: Required[str]
-    capabilities: NotRequired[list[str]]
-    tools: NotRequired[list[str]]
+    name: str
+    description: str
+    version: str
+    capabilities: list[str] = Field(default_factory=list)
+    tools: list[str] = Field(default_factory=list)
 
 
 def create_task_result(
@@ -60,17 +58,14 @@ def create_task_result(
         error: Optional error message if task failed.
 
     Returns:
-        TaskResult: Standardized task result dict.
+        TaskResult: Standardized task result instance.
     """
-    result: TaskResult = {
-        "success": success,
-        "message": message,
-    }
-    if data is not None:
-        result["data"] = data
-    if error is not None:
-        result["error"] = error
-    return result
+    return TaskResult(
+        success=success,
+        message=message,
+        data=data,
+        error=error,
+    )
 
 
 def create_agent_card(
@@ -90,7 +85,7 @@ def create_agent_card(
         tools: List of tool names available to the agent.
 
     Returns:
-        AgentCard: Agent card dict.
+        AgentCard: Agent card instance.
     """
     return AgentCard(
         name=name,
