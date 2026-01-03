@@ -46,8 +46,15 @@ def invalid_bearer_auth() -> BearerTokenAuth:
 
 @pytest.fixture
 def slack_client(mock_auth_provider: MockAuthProvider) -> SlackClient:
-    """Provide a SlackClient instance with mock auth."""
+    """Provide a SlackClient instance with mock auth (not initialized)."""
     return SlackClient(mock_auth_provider)
+
+
+@pytest.fixture
+async def async_slack_client(mock_auth_provider: MockAuthProvider) -> SlackClient:
+    """Provide an initialized SlackClient instance with mock auth via context manager."""
+    async with SlackClient(mock_auth_provider) as client:
+        yield client
 
 
 @pytest.fixture
