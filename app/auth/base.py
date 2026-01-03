@@ -4,6 +4,35 @@ from abc import ABC, abstractmethod
 from typing import Any
 
 
+class AuthenticationError(Exception):
+    """Exception raised when authentication fails.
+
+    This exception should be raised by AuthProvider implementations when
+    credentials are invalid, expired, or revoked.
+
+    Attributes:
+        message: Error message describing what went wrong.
+        error_code: Optional error code from the authentication provider.
+    """
+
+    def __init__(self, message: str, error_code: str | None = None) -> None:
+        """Initialize the AuthenticationError.
+
+        Args:
+            message: Error message describing what went wrong.
+            error_code: Optional error code from the authentication provider.
+        """
+        super().__init__(message)
+        self.message = message
+        self.error_code = error_code
+
+    def __str__(self) -> str:
+        """Return string representation of the error."""
+        if self.error_code:
+            return f"AuthenticationError({self.error_code}): {self.message}"
+        return f"AuthenticationError: {self.message}"
+
+
 class AuthProvider(ABC):
     """Abstract base class for authentication providers.
 
@@ -62,7 +91,7 @@ class AuthProvider(ABC):
             dict: Response from the authentication API containing identity info.
 
         Raises:
-            AuthenticationError: If credentials are invalid, expired, or revoked.
+            app.auth.base.AuthenticationError: If credentials are invalid, expired, or revoked.
             ConnectionError: If network issues persist after all retry attempts.
             TimeoutError: If the request times out after all retry attempts.
             ValueError: If the authentication configuration is invalid.
